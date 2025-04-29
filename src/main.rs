@@ -5,6 +5,7 @@ use actix_web::web;
 use actix_web::web::ServiceConfig;
 use actix_web::HttpResponse;
 use futures::StreamExt;
+use serde::Deserialize;
 use shuttle_actix_web::ShuttleActixWeb;
 use std::fs;
 use std::io::Write;
@@ -37,6 +38,29 @@ async fn upload(
     Ok(HttpResponse::Ok().finish())
 }
 
+#[derive(Deserialize)]
+struct DeleteFilePayload {
+    filename: String,
+}
+#[actix_web::delete("/file/{id}")]
+async fn delete_file(
+    id: web::Path<String>,
+    data: web::Json<DeleteFilePayload>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let basedir = id.into_inner();
+
+    let file_path = format!("images/{}/{}", basedir, data.filename);
+    fs::remove_file(file_path)?;
+
+    // if directory is empty, delete it
+    let dir_path = format!("images/{}", basedir);
+    if fs::read_dir(&dir_path)?.next().is_none() {
+        fs::remove_dir(dir_path)?;
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 fn sanitize_filename(filename: &str) -> String {
     filename
         .replace("..", "")
@@ -56,6 +80,7 @@ async fn main() -> ShuttleActixWeb<impl FnOnce(&mut ServiceConfig) + Send + Clon
             web::scope("")
                 .wrap(cors)
                 .service(upload)
+                .service(delete_file)
                 .service(Files::new("/images", "images").show_files_listing()),
         );
     };
